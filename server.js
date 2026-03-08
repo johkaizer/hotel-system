@@ -34,7 +34,7 @@ app.use(async (req, res, next) => {
       console.log('✅ Banco de dados inicializado em memória para Serverless');
     } catch (err) {
       console.error('Erro ao inicializar DB:', err);
-      return res.status(500).json({ error: 'Database initialization failed' });
+      return res.status(500).json({ error: 'Database initialization failed', details: err.message, stack: err.stack });
     }
   }
   next();
