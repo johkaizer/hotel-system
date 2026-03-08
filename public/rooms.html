@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quartos — Hotel Manager</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">🏨</div><div class="logo-text">Hotel Manager<span>Sistema de Gestão</span></div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-label">Menu Principal</div>
+        <a class="nav-item" href="./dashboard.html"><span class="icon">📊</span><span>Dashboard</span></a>
+        <a class="nav-item active" href="./rooms.html"><span class="icon">🛏️</span><span>Quartos</span></a>
+        <a class="nav-item" href="./guests.html"><span class="icon">👤</span><span>Hóspedes</span></a>
+        <a class="nav-item" href="./reservations.html"><span class="icon">📅</span><span>Reservas</span></a>
+        <a class="nav-item" href="./checkin.html"><span class="icon">🔑</span><span>Check-in / Check-out</span></a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Operações</div>
+        <a class="nav-item" href="./services.html"><span class="icon">🛎️</span><span>Serviços</span></a>
+        <a class="nav-item" href="./billing.html"><span class="icon">💳</span><span>Faturamento</span></a>
+        <a class="nav-item" href="./reports.html"><span class="icon">📈</span><span>Relatórios</span></a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card"><div class="user-avatar"><span class="user-initial">A</span></div><div class="user-info"><div class="name user-name">Admin</div><div class="role user-role">Administrador</div></div></div>
+      <button class="btn btn-secondary btn-sm w-full mt-4" id="logout-btn">🚪 Sair</button>
+    </div>
+  </aside>
+  <main class="main-content">
+    <div class="page-header">
+      <h1>🛏️ Quartos</h1>
+      <div class="ml-auto flex gap-2">
+        <select class="filter-select" id="filter-status"><option value="">Todos os Status</option><option value="available">Livres</option><option value="occupied">Ocupados</option><option value="cleaning">Limpeza</option><option value="maintenance">Manutenção</option></select>
+        <select class="filter-select" id="filter-type"><option value="">Todos os Tipos</option><option value="Standard">Standard</option><option value="Superior">Superior</option><option value="Deluxe">Deluxe</option><option value="Suite">Suite</option></select>
+        <button class="btn btn-primary" id="add-room-btn">+ Novo Quarto</button>
+      </div>
+    </div>
+    <div class="page-body">
+      <div class="rooms-grid" id="rooms-grid"><div class="loading">Carregando quartos...</div></div>
+    </div>
+  </main>
+</div>
+
+<!-- Room Modal -->
+<div class="modal-overlay" id="room-modal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title" id="modal-title">Novo Quarto</span><button class="btn btn-secondary btn-icon" onclick="closeModal('room-modal')">✕</button></div>
+    <div class="modal-body">
+      <form id="room-form" class="form-grid">
+        <input type="hidden" id="room-id">
+        <div class="form-group"><label>Número *</label><input type="text" id="r-number" placeholder="101" required></div>
+        <div class="form-group"><label>Tipo *</label><select id="r-type"><option value="Standard">Standard</option><option value="Superior">Superior</option><option value="Deluxe">Deluxe</option><option value="Suite">Suite</option></select></div>
+        <div class="form-group"><label>Andar *</label><input type="number" id="r-floor" min="1" placeholder="1" required></div>
+        <div class="form-group"><label>Preço/Noite (R$) *</label><input type="number" id="r-price" min="0" step="0.01" placeholder="200.00" required></div>
+        <div class="form-group"><label>Capacidade</label><input type="number" id="r-capacity" min="1" max="10" value="2"></div>
+        <div class="form-group"><label>Status</label><select id="r-status"><option value="available">Livre</option><option value="occupied">Ocupado</option><option value="cleaning">Limpeza</option><option value="maintenance">Manutenção</option></select></div>
+        <div class="form-group" style="grid-column:1/-1"><label>Amenidades</label><input type="text" id="r-amenities" placeholder="TV, Ar-condicionado, Banheiro privativo"></div>
+        <div class="form-group" style="grid-column:1/-1"><label>Descrição</label><textarea id="r-description" placeholder="Descrição do quarto..."></textarea></div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('room-modal')">Cancelar</button>
+      <button class="btn btn-primary" id="save-room-btn">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Room Detail Modal -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title" id="detail-title">Detalhes do Quarto</span><button class="btn btn-secondary btn-icon" onclick="closeModal('detail-modal')">✕</button></div>
+    <div class="modal-body" id="detail-body"></div>
+    <div class="modal-footer" id="detail-footer"></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/api.js"></script>
+<script>
+requireAuth(); initSidebar();
+setupModalClose('room-modal'); setupModalClose('detail-modal');
+const statusIcons = { available:'✅', occupied:'🔴', cleaning:'🧹', maintenance:'🔧' };
+const typeIcons = { Standard:'🛏️', Superior:'🛏️', Deluxe:'🌟', Suite:'👑' };
+
+async function loadRooms() {
+  const status = document.getElementById('filter-status').value;
+  const type = document.getElementById('filter-type').value;
+  let q = '/rooms';
+  const params = [];
+  if (status) params.push('status=' + status);
+  if (type) params.push('type=' + encodeURIComponent(type));
+  if (params.length) q += '?' + params.join('&');
+  const rooms = await apiFetch(q);
+  const grid = document.getElementById('rooms-grid');
+  if (!rooms.length) { grid.innerHTML = '<div class="empty-state"><div class="empty-icon">🛏️</div><p>Nenhum quarto encontrado</p></div>'; return; }
+  grid.innerHTML = rooms.map(r => `
+    <div class="room-card ${r.status}" onclick="showDetail(${r.id})">
+      <div class="room-icon">${typeIcons[r.type] || '🛏️'}</div>
+      <div class="room-number">${r.number}</div>
+      <div class="room-type">${r.type} · ${r.capacity} pax</div>
+      <div class="room-price">${formatCurrency(r.price_per_night)}/noite</div>
+      <span class="badge badge-${r.status}">${statusLabel(r.status)}</span>
+    </div>
+  `).join('');
+}
+
+async function showDetail(id) {
+  const r = await apiFetch('/rooms/' + id);
+  document.getElementById('detail-title').textContent = `Quarto ${r.number}`;
+  document.getElementById('detail-body').innerHTML = `
+    <div class="form-grid">
+      <div><div class="text-muted" style="font-size:11px;text-transform:uppercase;font-weight:600">Tipo</div><div class="font-semibold">${r.type}</div></div>
+      <div><div class="text-muted" style="font-size:11px;text-transform:uppercase;font-weight:600">Andar</div><div class="font-semibold">${r.floor}º andar</div></div>
+      <div><div class="text-muted" style="font-size:11px;text-transform:uppercase;font-weight:600">Capacidade</div><div class="font-semibold">${r.capacity} pessoas</div></div>
+      <div><div class="text-muted" style="font-size:11px;text-transform:uppercase;font-weight:600">Preço/Noite</div><div class="font-semibold text-primary">${formatCurrency(r.price_per_night)}</div></div>
+      <div style="grid-column:1/-1"><div class="text-muted" style="font-size:11px;text-transform:uppercase;font-weight:600">Status</div><span class="badge badge-${r.status} mt-4">${statusLabel(r.status)}</span></div>
+      ${r.amenities ? `<div style="grid-column:1/-1"><div class="text-muted" style="font-size:11px;text-transform:uppercase;font-weight:600">Amenidades</div><div class="font-semibold">${r.amenities}</div></div>` : ''}
+    </div>
+  `;
+  document.getElementById('detail-footer').innerHTML = `
+    <button class="btn btn-danger btn-sm" onclick="deleteRoom(${r.id})">🗑️ Excluir</button>
+    <button class="btn btn-secondary" onclick="closeModal('detail-modal')">Fechar</button>
+    <button class="btn btn-primary" onclick="openEdit(${JSON.stringify(r).replace(/"/g,'&quot;')})">✏️ Editar</button>
+  `;
+  openModal('detail-modal');
+}
+
+function openEdit(r) {
+  closeModal('detail-modal');
+  document.getElementById('modal-title').textContent = 'Editar Quarto';
+  document.getElementById('room-id').value = r.id;
+  document.getElementById('r-number').value = r.number;
+  document.getElementById('r-type').value = r.type;
+  document.getElementById('r-floor').value = r.floor;
+  document.getElementById('r-price').value = r.price_per_night;
+  document.getElementById('r-capacity').value = r.capacity;
+  document.getElementById('r-status').value = r.status;
+  document.getElementById('r-amenities').value = r.amenities || '';
+  document.getElementById('r-description').value = r.description || '';
+  openModal('room-modal');
+}
+
+document.getElementById('add-room-btn').addEventListener('click', () => {
+  document.getElementById('modal-title').textContent = 'Novo Quarto';
+  document.getElementById('room-form').reset();
+  document.getElementById('room-id').value = '';
+  openModal('room-modal');
+});
+
+document.getElementById('save-room-btn').addEventListener('click', async () => {
+  const id = document.getElementById('room-id').value;
+  const body = {
+    number: document.getElementById('r-number').value,
+    type: document.getElementById('r-type').value,
+    floor: document.getElementById('r-floor').value,
+    price_per_night: document.getElementById('r-price').value,
+    capacity: document.getElementById('r-capacity').value,
+    status: document.getElementById('r-status').value,
+    amenities: document.getElementById('r-amenities').value,
+    description: document.getElementById('r-description').value,
+  };
+  try {
+    if (id) await apiFetch('/rooms/' + id, { method: 'PUT', body });
+    else await apiFetch('/rooms', { method: 'POST', body });
+    toast(id ? 'Quarto atualizado!' : 'Quarto criado!', 'success');
+    closeModal('room-modal'); loadRooms();
+  } catch (e) { toast(e.message, 'error'); }
+});
+
+async function deleteRoom(id) {
+  if (!confirm('Excluir este quarto?')) return;
+  try { await apiFetch('/rooms/' + id, { method: 'DELETE' }); toast('Quarto excluído!', 'success'); closeModal('detail-modal'); loadRooms(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+document.getElementById('filter-status').addEventListener('change', loadRooms);
+document.getElementById('filter-type').addEventListener('change', loadRooms);
+loadRooms();
+</script>
+</body>
+</html>

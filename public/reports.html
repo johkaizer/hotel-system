@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatórios — Hotel Manager</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">🏨</div><div class="logo-text">Hotel Manager<span>Sistema de Gestão</span></div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-label">Menu Principal</div>
+        <a class="nav-item" href="./dashboard.html"><span class="icon">📊</span><span>Dashboard</span></a>
+        <a class="nav-item" href="./rooms.html"><span class="icon">🛏️</span><span>Quartos</span></a>
+        <a class="nav-item" href="./guests.html"><span class="icon">👤</span><span>Hóspedes</span></a>
+        <a class="nav-item" href="./reservations.html"><span class="icon">📅</span><span>Reservas</span></a>
+        <a class="nav-item" href="./checkin.html"><span class="icon">🔑</span><span>Check-in / Check-out</span></a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Operações</div>
+        <a class="nav-item" href="./services.html"><span class="icon">🛎️</span><span>Serviços</span></a>
+        <a class="nav-item" href="./billing.html"><span class="icon">💳</span><span>Faturamento</span></a>
+        <a class="nav-item active" href="./reports.html"><span class="icon">📈</span><span>Relatórios</span></a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card"><div class="user-avatar"><span class="user-initial">A</span></div><div class="user-info"><div class="name user-name">Admin</div><div class="role user-role">Administrador</div></div></div>
+      <button class="btn btn-secondary btn-sm w-full mt-4" id="logout-btn">🚪 Sair</button>
+    </div>
+  </aside>
+  <main class="main-content">
+    <div class="page-header">
+      <h1>📈 Relatórios</h1>
+      <div class="ml-auto flex gap-2">
+        <select class="filter-select" id="period-select">
+          <option value="7">Últimos 7 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="90">Últimos 90 dias</option>
+        </select>
+      </div>
+    </div>
+    <div class="page-body">
+      <!-- KPI summary -->
+      <div class="kpi-grid mb-4" id="report-kpis"><div class="loading">Carregando...</div></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Taxa de Ocupação</span></div>
+          <div class="chart-container"><canvas id="occ-chart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Receita Diária</span></div>
+          <div class="chart-container"><canvas id="rev-chart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="grid-2 mt-4">
+        <!-- Top guests -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">🏆 Top Hóspedes</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Hóspede</th><th>Estadias</th><th>Gasto Total</th></tr></thead>
+              <tbody id="top-guests-table"><tr><td colspan="4" class="loading">Carregando...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Room types -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">Receita por Tipo de Quarto</span></div>
+          <div class="chart-container"><canvas id="types-chart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/api.js"></script>
+<script>
+requireAuth(); initSidebar();
+Chart.defaults.color = '#64748b';
+Chart.defaults.borderColor = '#1e293b';
+let occChart, revChart, typesChart;
+
+async function loadReports() {
+  const days = parseInt(document.getElementById('period-select').value);
+  const end = new Date().toISOString().split('T')[0];
+  const start = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+
+  const [occ, rev, topGuests, roomTypes] = await Promise.all([
+    apiFetch(`/reports/occupancy?start=${start}&end=${end}`),
+    apiFetch(`/reports/revenue?start=${start}&end=${end}`),
+    apiFetch('/reports/top-guests'),
+    apiFetch('/reports/room-types'),
+  ]);
+
+  // KPI
+  const avgOcc = occ.length ? Math.round(occ.reduce((s, d) => s + (d.total ? (d.occupied / d.total) * 100 : 0), 0) / occ.length) : 0;
+  const totalRev = rev.reduce((s, d) => s + d.revenue, 0);
+  const revDays = rev.filter(d => d.revenue > 0).length;
+  const avgDaily = revDays ? totalRev / revDays : 0;
+  document.getElementById('report-kpis').innerHTML = `
+    <div class="kpi-card"><div class="kpi-icon blue">📊</div><div><div class="kpi-value">${avgOcc}%</div><div class="kpi-label">Ocupação Média</div></div></div>
+    <div class="kpi-card"><div class="kpi-icon green">💰</div><div><div class="kpi-value">${formatCurrency(totalRev)}</div><div class="kpi-label">Receita do Período</div></div></div>
+    <div class="kpi-card"><div class="kpi-icon cyan">📅</div><div><div class="kpi-value">${formatCurrency(avgDaily)}</div><div class="kpi-label">Receita Média/Dia</div></div></div>
+    <div class="kpi-card"><div class="kpi-icon amber">🏆</div><div><div class="kpi-value">${topGuests[0] ? topGuests[0].total_stays : 0}</div><div class="kpi-label">Máx. Estadias (hóspede)</div></div></div>
+  `;
+
+  // Occupancy chart
+  const occLabels = occ.map(d => new Date(d.date + 'T00:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }));
+  const occData = occ.map(d => d.total ? Math.round((d.occupied / d.total) * 100) : 0);
+  if (occChart) occChart.destroy();
+  occChart = new Chart(document.getElementById('occ-chart'), {
+    type: 'line',
+    data: { labels: occLabels, datasets: [{ label: 'Ocupação %', data: occData, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true, tension: 0.4, pointRadius: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 8 } }, y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } } }
+  });
+
+  // Revenue chart
+  const revLabels = rev.map(d => new Date(d.date + 'T00:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }));
+  const revData = rev.map(d => d.revenue);
+  if (revChart) revChart.destroy();
+  revChart = new Chart(document.getElementById('rev-chart'), {
+    type: 'bar',
+    data: { labels: revLabels, datasets: [{ data: revData, backgroundColor: 'rgba(6,182,212,0.7)', borderColor: '#06b6d4', borderWidth: 1, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 8 } }, y: { ticks: { callback: v => 'R$' + (v/1000).toFixed(0) + 'k' } } } }
+  });
+
+  // Top guests table
+  document.getElementById('top-guests-table').innerHTML = topGuests.length
+    ? topGuests.map((g, i) => `<tr>
+        <td><span style="font-size:18px">${['🥇','🥈','🥉'][i] || (i+1)+'º'}</span></td>
+        <td class="font-semibold">${g.name}</td>
+        <td><span class="badge badge-occupied">${g.total_stays} estadias</span></td>
+        <td class="text-primary font-semibold">${formatCurrency(g.total_spent)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="empty-state">Sem dados</td></tr>';
+
+  // Room types pie
+  const typeLabels = roomTypes.map(t => t.type);
+  const typeData = roomTypes.map(t => t.revenue);
+  const palette = ['#6366f1','#06b6d4','#10b981','#f59e0b','#ef4444'];
+  if (typesChart) typesChart.destroy();
+  typesChart = new Chart(document.getElementById('types-chart'), {
+    type: 'doughnut',
+    data: { labels: typeLabels, datasets: [{ data: typeData, backgroundColor: palette, borderColor: '#10141f', borderWidth: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8' } } } }
+  });
+}
+
+document.getElementById('period-select').addEventListener('change', loadReports);
+loadReports();
+</script>
+</body>
+</html>

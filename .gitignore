@@ -1,0 +1,4 @@
+node_modules/
+.env
+hotel.db.bin
+.DS_Store

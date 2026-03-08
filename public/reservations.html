@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reservas — Hotel Manager</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">🏨</div><div class="logo-text">Hotel Manager<span>Sistema de Gestão</span></div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-label">Menu Principal</div>
+        <a class="nav-item" href="./dashboard.html"><span class="icon">📊</span><span>Dashboard</span></a>
+        <a class="nav-item" href="./rooms.html"><span class="icon">🛏️</span><span>Quartos</span></a>
+        <a class="nav-item" href="./guests.html"><span class="icon">👤</span><span>Hóspedes</span></a>
+        <a class="nav-item active" href="./reservations.html"><span class="icon">📅</span><span>Reservas</span></a>
+        <a class="nav-item" href="./checkin.html"><span class="icon">🔑</span><span>Check-in / Check-out</span></a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Operações</div>
+        <a class="nav-item" href="./services.html"><span class="icon">🛎️</span><span>Serviços</span></a>
+        <a class="nav-item" href="./billing.html"><span class="icon">💳</span><span>Faturamento</span></a>
+        <a class="nav-item" href="./reports.html"><span class="icon">📈</span><span>Relatórios</span></a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card"><div class="user-avatar"><span class="user-initial">A</span></div><div class="user-info"><div class="name user-name">Admin</div><div class="role user-role">Administrador</div></div></div>
+      <button class="btn btn-secondary btn-sm w-full mt-4" id="logout-btn">🚪 Sair</button>
+    </div>
+  </aside>
+  <main class="main-content">
+    <div class="page-header">
+      <h1>📅 Reservas</h1>
+      <div class="ml-auto flex gap-2">
+        <select class="filter-select" id="filter-status"><option value="">Todos os Status</option><option value="confirmed">Confirmada</option><option value="checked_in">Check-in</option><option value="checked_out">Check-out</option><option value="cancelled">Cancelada</option></select>
+        <button class="btn btn-primary" id="add-res-btn">+ Nova Reserva</button>
+      </div>
+    </div>
+    <div class="page-body">
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Hóspede</th><th>Quarto</th><th>Check-in</th><th>Check-out</th><th>Noites</th><th>Total</th><th>Status</th><th>Ações</th></tr></thead>
+            <tbody id="res-table"><tr><td colspan="9" class="loading">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- New Reservation Modal -->
+<div class="modal-overlay" id="res-modal">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-header"><span class="modal-title">Nova Reserva</span><button class="btn btn-secondary btn-icon" onclick="closeModal('res-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Hóspede *</label>
+          <select id="r-guest"><option value="">Selecione o hóspede...</option></select>
+        </div>
+        <div class="form-group"><label>Check-in *</label><input type="date" id="r-checkin"></div>
+        <div class="form-group"><label>Check-out *</label><input type="date" id="r-checkout"></div>
+        <div class="form-group"><label>Adultos</label><input type="number" id="r-adults" value="1" min="1"></div>
+        <div class="form-group"><label>Crianças</label><input type="number" id="r-children" value="0" min="0"></div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Quarto disponível *</label>
+          <select id="r-room"><option value="">Informe as datas primeiro...</option></select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <div id="room-preview" style="display:none;background:var(--bg3);border-radius:10px;padding:14px;border:1px solid var(--border)"></div>
+        </div>
+        <div class="form-group" style="grid-column:1/-1"><label>Observações</label><textarea id="r-notes" placeholder="Solicitações especiais..."></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div style="flex:1;font-weight:700;color:var(--primary-light)" id="total-preview"></div>
+      <button class="btn btn-secondary" onclick="closeModal('res-modal')">Cancelar</button>
+      <button class="btn btn-primary" id="save-res-btn">💾 Confirmar Reserva</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/api.js"></script>
+<script>
+requireAuth(); initSidebar();
+setupModalClose('res-modal');
+
+async function loadReservations() {
+  const status = document.getElementById('filter-status').value;
+  const params = status ? '?status=' + status : '';
+  const list = await apiFetch('/reservations' + params);
+  const tbody = document.getElementById('res-table');
+  if (!list.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><div>📅</div>Nenhuma reserva encontrada</td></tr>'; return; }
+  tbody.innerHTML = list.map(r => {
+    const nights = daysDiff(r.check_in_date, r.check_out_date);
+    return `<tr>
+      <td class="text-muted">#${r.id}</td>
+      <td class="font-semibold">${r.guest_name}</td>
+      <td>🛏️ ${r.room_number} <span class="text-muted">(${r.room_type})</span></td>
+      <td>${formatDate(r.check_in_date)}</td>
+      <td>${formatDate(r.check_out_date)}</td>
+      <td>${nights}n</td>
+      <td class="font-semibold text-primary">${formatCurrency(r.total_amount)}</td>
+      <td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td>
+      <td>
+        <div class="flex gap-2">
+          <a href="./billing.html?id=${r.id}" class="btn btn-secondary btn-sm">💳</a>
+          ${r.status === 'confirmed' ? `<button class="btn btn-danger btn-sm" onclick="cancelRes(${r.id})">✕</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadGuests() {
+  const guests = await apiFetch('/guests');
+  const sel = document.getElementById('r-guest');
+  sel.innerHTML = '<option value="">Selecione o hóspede...</option>' + guests.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+}
+
+async function loadAvailableRooms() {
+  const ci = document.getElementById('r-checkin').value;
+  const co = document.getElementById('r-checkout').value;
+  if (!ci || !co || co <= ci) return;
+  const rooms = await apiFetch(`/rooms/check/availability?check_in=${ci}&check_out=${co}`);
+  const sel = document.getElementById('r-room');
+  sel.innerHTML = rooms.length
+    ? rooms.map(r => `<option value="${r.id}" data-price="${r.price_per_night}">${r.number} — ${r.type} (${formatCurrency(r.price_per_night)}/noite, cap. ${r.capacity})</option>`).join('')
+    : '<option value="">Nenhum quarto disponível para o período</option>';
+  updateTotal();
+}
+
+function updateTotal() {
+  const ci = document.getElementById('r-checkin').value;
+  const co = document.getElementById('r-checkout').value;
+  const roomSel = document.getElementById('r-room');
+  const opt = roomSel.options[roomSel.selectedIndex];
+  if (ci && co && opt && opt.dataset.price) {
+    const nights = daysDiff(ci, co);
+    const total = nights * parseFloat(opt.dataset.price);
+    document.getElementById('total-preview').textContent = `${nights} noite(s) · ${formatCurrency(total)}`;
+    const preview = document.getElementById('room-preview');
+    preview.style.display = 'block';
+    preview.innerHTML = `<strong>${opt.textContent}</strong><br><span class="text-muted">Total estimado: <strong class="text-primary">${formatCurrency(total)}</strong></span>`;
+  }
+}
+
+document.getElementById('add-res-btn').addEventListener('click', async () => {
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  document.getElementById('r-checkin').value = today;
+  document.getElementById('r-checkout').value = tomorrow;
+  document.getElementById('r-adults').value = 1;
+  document.getElementById('r-children').value = 0;
+  document.getElementById('r-notes').value = '';
+  document.getElementById('total-preview').textContent = '';
+  document.getElementById('room-preview').style.display = 'none';
+  await loadGuests();
+  await loadAvailableRooms();
+  openModal('res-modal');
+});
+
+document.getElementById('r-checkin').addEventListener('change', loadAvailableRooms);
+document.getElementById('r-checkout').addEventListener('change', loadAvailableRooms);
+document.getElementById('r-room').addEventListener('change', updateTotal);
+
+document.getElementById('save-res-btn').addEventListener('click', async () => {
+  const body = {
+    guest_id: document.getElementById('r-guest').value,
+    room_id: document.getElementById('r-room').value,
+    check_in_date: document.getElementById('r-checkin').value,
+    check_out_date: document.getElementById('r-checkout').value,
+    adults: document.getElementById('r-adults').value,
+    children: document.getElementById('r-children').value,
+    notes: document.getElementById('r-notes').value,
+  };
+  if (!body.guest_id || !body.room_id) { toast('Selecione hóspede e quarto', 'error'); return; }
+  try {
+    const res = await apiFetch('/reservations', { method: 'POST', body });
+    toast(`Reserva #${res.id} criada! Total: ${formatCurrency(res.total_amount)}`, 'success');
+    closeModal('res-modal'); loadReservations();
+  } catch (e) { toast(e.message, 'error'); }
+});
+
+async function cancelRes(id) {
+  if (!confirm('Cancelar esta reserva?')) return;
+  try { await apiFetch('/reservations/' + id, { method: 'DELETE' }); toast('Reserva cancelada', 'success'); loadReservations(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+document.getElementById('filter-status').addEventListener('change', loadReservations);
+loadReservations();
+</script>
+</body>
+</html>

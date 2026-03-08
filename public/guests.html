@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hóspedes — Hotel Manager</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">🏨</div><div class="logo-text">Hotel Manager<span>Sistema de Gestão</span></div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-label">Menu Principal</div>
+        <a class="nav-item" href="./dashboard.html"><span class="icon">📊</span><span>Dashboard</span></a>
+        <a class="nav-item" href="./rooms.html"><span class="icon">🛏️</span><span>Quartos</span></a>
+        <a class="nav-item active" href="./guests.html"><span class="icon">👤</span><span>Hóspedes</span></a>
+        <a class="nav-item" href="./reservations.html"><span class="icon">📅</span><span>Reservas</span></a>
+        <a class="nav-item" href="./checkin.html"><span class="icon">🔑</span><span>Check-in / Check-out</span></a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Operações</div>
+        <a class="nav-item" href="./services.html"><span class="icon">🛎️</span><span>Serviços</span></a>
+        <a class="nav-item" href="./billing.html"><span class="icon">💳</span><span>Faturamento</span></a>
+        <a class="nav-item" href="./reports.html"><span class="icon">📈</span><span>Relatórios</span></a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card"><div class="user-avatar"><span class="user-initial">A</span></div><div class="user-info"><div class="name user-name">Admin</div><div class="role user-role">Administrador</div></div></div>
+      <button class="btn btn-secondary btn-sm w-full mt-4" id="logout-btn">🚪 Sair</button>
+    </div>
+  </aside>
+  <main class="main-content">
+    <div class="page-header">
+      <h1>👤 Hóspedes</h1>
+      <div class="ml-auto flex gap-2">
+        <div class="search-bar"><span class="search-icon">🔍</span><input type="text" id="search-input" placeholder="Buscar por nome, CPF, email..."></div>
+        <button class="btn btn-primary" id="add-guest-btn">+ Novo Hóspede</button>
+      </div>
+    </div>
+    <div class="page-body">
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nome</th><th>CPF</th><th>Email</th><th>Telefone</th><th>Cidade</th><th>Ações</th></tr></thead>
+            <tbody id="guests-table"><tr><td colspan="6" class="loading">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Guest Modal -->
+<div class="modal-overlay" id="guest-modal">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-header"><span class="modal-title" id="guest-modal-title">Novo Hóspede</span><button class="btn btn-secondary btn-icon" onclick="closeModal('guest-modal')">✕</button></div>
+    <div class="modal-body">
+      <form id="guest-form" class="form-grid">
+        <input type="hidden" id="guest-id">
+        <div class="form-group" style="grid-column:1/-1"><label>Nome Completo *</label><input type="text" id="g-name" placeholder="Nome do hóspede" required></div>
+        <div class="form-group"><label>CPF</label><input type="text" id="g-cpf" placeholder="000.000.000-00"></div>
+        <div class="form-group"><label>Email</label><input type="email" id="g-email" placeholder="email@exemplo.com"></div>
+        <div class="form-group"><label>Telefone</label><input type="text" id="g-phone" placeholder="(11) 99999-9999"></div>
+        <div class="form-group"><label>Nacionalidade</label><input type="text" id="g-nationality" value="Brasileiro"></div>
+        <div class="form-group" style="grid-column:1/-1"><label>Endereço</label><input type="text" id="g-address" placeholder="Rua, número, bairro"></div>
+        <div class="form-group"><label>Cidade</label><input type="text" id="g-city" placeholder="São Paulo"></div>
+        <div class="form-group"><label>Estado</label><input type="text" id="g-state" placeholder="SP" maxlength="2"></div>
+        <div class="form-group" style="grid-column:1/-1"><label>Observações</label><textarea id="g-notes" placeholder="Preferências, necessidades especiais..."></textarea></div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('guest-modal')">Cancelar</button>
+      <button class="btn btn-primary" id="save-guest-btn">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Guest Detail Modal -->
+<div class="modal-overlay" id="guest-detail-modal">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-header"><span class="modal-title" id="gd-title">Detalhes do Hóspede</span><button class="btn btn-secondary btn-icon" onclick="closeModal('guest-detail-modal')">✕</button></div>
+    <div class="modal-body" id="gd-body"></div>
+    <div class="modal-footer" id="gd-footer"></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/api.js"></script>
+<script>
+requireAuth(); initSidebar();
+setupModalClose('guest-modal'); setupModalClose('guest-detail-modal');
+let searchTimer;
+
+async function loadGuests(search = '') {
+  const params = search ? '?search=' + encodeURIComponent(search) : '';
+  const guests = await apiFetch('/guests' + params);
+  const tbody = document.getElementById('guests-table');
+  if (!guests.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><div>👤</div>Nenhum hóspede encontrado</td></tr>'; return; }
+  tbody.innerHTML = guests.map(g => `
+    <tr>
+      <td class="font-semibold">${g.name}</td>
+      <td class="text-muted">${g.cpf || '—'}</td>
+      <td class="text-muted">${g.email || '—'}</td>
+      <td class="text-muted">${g.phone || '—'}</td>
+      <td class="text-muted">${g.city || '—'} ${g.state ? '- ' + g.state : ''}</td>
+      <td>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary btn-sm" onclick="showGuestDetail(${g.id})">👁 Ver</button>
+          <button class="btn btn-secondary btn-sm" onclick="editGuest(${g.id})">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteGuest(${g.id})">🗑️</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function showGuestDetail(id) {
+  const g = await apiFetch('/guests/' + id);
+  document.getElementById('gd-title').textContent = g.name;
+  document.getElementById('gd-body').innerHTML = `
+    <div class="form-grid mb-4">
+      <div><div class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase">CPF</div><div>${g.cpf || '—'}</div></div>
+      <div><div class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase">Email</div><div>${g.email || '—'}</div></div>
+      <div><div class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase">Telefone</div><div>${g.phone || '—'}</div></div>
+      <div><div class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase">Cidade</div><div>${g.city || '—'} ${g.state || ''}</div></div>
+    </div>
+    <div class="divider"></div>
+    <div class="card-title mb-4">Histórico de Reservas (${g.reservations.length})</div>
+    ${g.reservations.length ? `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Quarto</th><th>Check-in</th><th>Check-out</th><th>Status</th></tr></thead>
+        <tbody>${g.reservations.map(r => `<tr>
+          <td>${r.room_number} (${r.room_type})</td>
+          <td>${formatDate(r.check_in_date)}</td>
+          <td>${formatDate(r.check_out_date)}</td>
+          <td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>` : '<p class="text-muted">Sem reservas cadastradas.</p>'}
+  `;
+  document.getElementById('gd-footer').innerHTML = `
+    <button class="btn btn-secondary" onclick="closeModal('guest-detail-modal')">Fechar</button>
+    <button class="btn btn-primary" onclick="closeModal('guest-detail-modal');editGuest(${g.id})">✏️ Editar</button>
+  `;
+  openModal('guest-detail-modal');
+}
+
+async function editGuest(id) {
+  const g = await apiFetch('/guests/' + id);
+  document.getElementById('guest-modal-title').textContent = 'Editar Hóspede';
+  document.getElementById('guest-id').value = g.id;
+  document.getElementById('g-name').value = g.name;
+  document.getElementById('g-cpf').value = g.cpf || '';
+  document.getElementById('g-email').value = g.email || '';
+  document.getElementById('g-phone').value = g.phone || '';
+  document.getElementById('g-nationality').value = g.nationality || 'Brasileiro';
+  document.getElementById('g-address').value = g.address || '';
+  document.getElementById('g-city').value = g.city || '';
+  document.getElementById('g-state').value = g.state || '';
+  document.getElementById('g-notes').value = g.notes || '';
+  openModal('guest-modal');
+}
+
+document.getElementById('add-guest-btn').addEventListener('click', () => {
+  document.getElementById('guest-modal-title').textContent = 'Novo Hóspede';
+  document.getElementById('guest-form').reset();
+  document.getElementById('guest-id').value = '';
+  document.getElementById('g-nationality').value = 'Brasileiro';
+  openModal('guest-modal');
+});
+
+document.getElementById('save-guest-btn').addEventListener('click', async () => {
+  const id = document.getElementById('guest-id').value;
+  const body = {
+    name: document.getElementById('g-name').value,
+    cpf: document.getElementById('g-cpf').value,
+    email: document.getElementById('g-email').value,
+    phone: document.getElementById('g-phone').value,
+    nationality: document.getElementById('g-nationality').value,
+    address: document.getElementById('g-address').value,
+    city: document.getElementById('g-city').value,
+    state: document.getElementById('g-state').value,
+    notes: document.getElementById('g-notes').value,
+  };
+  try {
+    if (id) await apiFetch('/guests/' + id, { method: 'PUT', body });
+    else await apiFetch('/guests', { method: 'POST', body });
+    toast(id ? 'Hóspede atualizado!' : 'Hóspede cadastrado!', 'success');
+    closeModal('guest-modal'); loadGuests(document.getElementById('search-input').value);
+  } catch (e) { toast(e.message, 'error'); }
+});
+
+async function deleteGuest(id) {
+  if (!confirm('Excluir este hóspede?')) return;
+  try { await apiFetch('/guests/' + id, { method: 'DELETE' }); toast('Hóspede excluído!', 'success'); loadGuests(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+document.getElementById('search-input').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => loadGuests(e.target.value), 400);
+});
+
+loadGuests();
+</script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Check-in / Check-out — Hotel Manager</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">🏨</div><div class="logo-text">Hotel Manager<span>Sistema de Gestão</span></div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-label">Menu Principal</div>
+        <a class="nav-item" href="./dashboard.html"><span class="icon">📊</span><span>Dashboard</span></a>
+        <a class="nav-item" href="./rooms.html"><span class="icon">🛏️</span><span>Quartos</span></a>
+        <a class="nav-item" href="./guests.html"><span class="icon">👤</span><span>Hóspedes</span></a>
+        <a class="nav-item" href="./reservations.html"><span class="icon">📅</span><span>Reservas</span></a>
+        <a class="nav-item active" href="./checkin.html"><span class="icon">🔑</span><span>Check-in / Check-out</span></a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Operações</div>
+        <a class="nav-item" href="./services.html"><span class="icon">🛎️</span><span>Serviços</span></a>
+        <a class="nav-item" href="./billing.html"><span class="icon">💳</span><span>Faturamento</span></a>
+        <a class="nav-item" href="./reports.html"><span class="icon">📈</span><span>Relatórios</span></a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card"><div class="user-avatar"><span class="user-initial">A</span></div><div class="user-info"><div class="name user-name">Admin</div><div class="role user-role">Administrador</div></div></div>
+      <button class="btn btn-secondary btn-sm w-full mt-4" id="logout-btn">🚪 Sair</button>
+    </div>
+  </aside>
+  <main class="main-content">
+    <div class="page-header">
+      <h1>🔑 Check-in / Check-out</h1>
+      <p class="text-muted ml-auto" style="font-size:13px" id="today-label"></p>
+    </div>
+    <div class="page-body">
+      <div class="grid-2">
+        <!-- Check-ins hoje -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">🟢 Check-ins de Hoje</span>
+            <span class="badge badge-confirmed" id="ci-count">0</span>
+          </div>
+          <div id="ci-list"><div class="loading">Carregando...</div></div>
+        </div>
+        <!-- Check-outs hoje -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">🔵 Check-outs de Hoje</span>
+            <span class="badge badge-checked_in" id="co-count">0</span>
+          </div>
+          <div id="co-list"><div class="loading">Carregando...</div></div>
+        </div>
+      </div>
+
+      <!-- All active reservations -->
+      <div class="card mt-4">
+        <div class="card-header">
+          <span class="card-title">🏠 Hóspedes no Hotel</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Hóspede</th><th>Quarto</th><th>Check-in</th><th>Check-out</th><th>Ações</th></tr></thead>
+            <tbody id="inhouse-table"><tr><td colspan="5" class="loading">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="toast-container"></div>
+<script src="js/api.js"></script>
+<script>
+requireAuth(); initSidebar();
+document.getElementById('today-label').textContent = new Date().toLocaleDateString('pt-BR', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+function guestCard(r, type) {
+  const action = type === 'checkin'
+    ? `<button class="btn btn-success btn-sm" onclick="doCheckin(${r.id})">✅ Fazer Check-in</button>`
+    : `<button class="btn btn-primary btn-sm" onclick="doCheckout(${r.id})">🚪 Fazer Check-out</button>`;
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <div class="font-semibold">${r.guest_name}</div>
+        <div class="text-muted" style="font-size:12px">🛏️ Quarto ${r.room_number} · ${r.room_type}</div>
+      </div>
+      ${action}
+    </div>
+  `;
+}
+
+async function loadData() {
+  const [checkins, checkouts, inhouse] = await Promise.all([
+    apiFetch('/checkin/today/checkins'),
+    apiFetch('/checkin/today/checkouts'),
+    apiFetch('/reservations?status=checked_in'),
+  ]);
+
+  document.getElementById('ci-count').textContent = checkins.length;
+  document.getElementById('ci-list').innerHTML = checkins.length
+    ? checkins.map(r => guestCard(r, 'checkin')).join('')
+    : '<div class="empty-state" style="padding:30px 0"><div>✅</div>Nenhum check-in pendente hoje</div>';
+
+  document.getElementById('co-count').textContent = checkouts.length;
+  document.getElementById('co-list').innerHTML = checkouts.length
+    ? checkouts.map(r => guestCard(r, 'checkout')).join('')
+    : '<div class="empty-state" style="padding:30px 0"><div>🚪</div>Nenhum check-out pendente hoje</div>';
+
+  const tbody = document.getElementById('inhouse-table');
+  tbody.innerHTML = inhouse.length
+    ? inhouse.map(r => `<tr>
+        <td class="font-semibold">${r.guest_name}</td>
+        <td>🛏️ ${r.room_number} (${r.room_type})</td>
+        <td>${formatDate(r.check_in_date)}</td>
+        <td>${formatDate(r.check_out_date)}</td>
+        <td>
+          <div class="flex gap-2">
+            <a href="./services.html?id=${r.id}" class="btn btn-secondary btn-sm">🛎️ Serviços</a>
+            <a href="./billing.html?id=${r.id}" class="btn btn-secondary btn-sm">💳 Conta</a>
+            <button class="btn btn-primary btn-sm" onclick="doCheckout(${r.id})">🚪 Check-out</button>
+          </div>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty-state"><div>🏨</div>Nenhum hóspede no hotel</td></tr>';
+}
+
+async function doCheckin(id) {
+  if (!confirm('Confirmar check-in?')) return;
+  try { await apiFetch('/checkin/checkin/' + id, { method: 'POST' }); toast('Check-in realizado com sucesso!', 'success'); loadData(); }
+  catch (e) { toast(e.message, 'error'); }
+}
+
+async function doCheckout(id) {
+  if (!confirm('Confirmar check-out?')) return;
+  try {
+    const res = await apiFetch('/checkin/checkout/' + id, { method: 'POST' });
+    toast(`Check-out realizado! Saldo: ${formatCurrency(res.balance)}`, res.balance > 0 ? 'info' : 'success');
+    if (res.balance > 0) setTimeout(() => window.location.href = './billing.html?id=' + id, 1500);
+    else loadData();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+loadData();
+</script>
+</body>
+</html>

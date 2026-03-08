@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Serviços — Hotel Manager</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">🏨</div><div class="logo-text">Hotel Manager<span>Sistema de Gestão</span></div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-label">Menu Principal</div>
+        <a class="nav-item" href="./dashboard.html"><span class="icon">📊</span><span>Dashboard</span></a>
+        <a class="nav-item" href="./rooms.html"><span class="icon">🛏️</span><span>Quartos</span></a>
+        <a class="nav-item" href="./guests.html"><span class="icon">👤</span><span>Hóspedes</span></a>
+        <a class="nav-item" href="./reservations.html"><span class="icon">📅</span><span>Reservas</span></a>
+        <a class="nav-item" href="./checkin.html"><span class="icon">🔑</span><span>Check-in / Check-out</span></a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Operações</div>
+        <a class="nav-item active" href="./services.html"><span class="icon">🛎️</span><span>Serviços</span></a>
+        <a class="nav-item" href="./billing.html"><span class="icon">💳</span><span>Faturamento</span></a>
+        <a class="nav-item" href="./reports.html"><span class="icon">📈</span><span>Relatórios</span></a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card"><div class="user-avatar"><span class="user-initial">A</span></div><div class="user-info"><div class="name user-name">Admin</div><div class="role user-role">Administrador</div></div></div>
+      <button class="btn btn-secondary btn-sm w-full mt-4" id="logout-btn">🚪 Sair</button>
+    </div>
+  </aside>
+  <main class="main-content">
+    <div class="page-header"><h1>🛎️ Serviços</h1></div>
+    <div class="page-body">
+      <div class="grid-2">
+        <!-- Charge Service Panel -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">Lançar Serviço</span></div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div class="form-group">
+              <label>Reserva Ativa</label>
+              <select id="svc-reservation"><option value="">Selecione uma reserva...</option></select>
+            </div>
+            <div class="form-group">
+              <label>Serviço</label>
+              <select id="svc-service"><option value="">Selecione o serviço...</option></select>
+            </div>
+            <div class="form-group">
+              <label>Quantidade</label>
+              <input type="number" id="svc-qty" value="1" min="1">
+            </div>
+            <div class="form-group">
+              <label>Observações</label>
+              <input type="text" id="svc-notes" placeholder="Observações opcionais...">
+            </div>
+            <div id="svc-preview" style="background:var(--bg3);border-radius:10px;padding:12px;border:1px solid var(--border);display:none"></div>
+            <button class="btn btn-primary" id="charge-btn">🛎️ Lançar Serviço</button>
+          </div>
+        </div>
+
+        <!-- Reservation Services Ledger -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Consumos da Reserva</span>
+            <span id="svc-total-badge" class="badge badge-occupied" style="display:none"></span>
+          </div>
+          <div id="svc-ledger"><div class="empty-state"><div class="empty-icon">🛎️</div><p>Selecione uma reserva</p></div></div>
+        </div>
+      </div>
+
+      <!-- Service Catalog -->
+      <div class="card mt-4">
+        <div class="card-header">
+          <span class="card-title">Catálogo de Serviços</span>
+          <button class="btn btn-primary btn-sm" id="add-svc-btn">+ Novo Serviço</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Serviço</th><th>Categoria</th><th>Preço</th><th>Status</th><th>Ações</th></tr></thead>
+            <tbody id="catalog-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- New Service Modal -->
+<div class="modal-overlay" id="svc-modal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Novo Serviço</span><button class="btn btn-secondary btn-icon" onclick="closeModal('svc-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group" style="grid-column:1/-1"><label>Nome *</label><input type="text" id="s-name" placeholder="Nome do serviço"></div>
+        <div class="form-group"><label>Categoria *</label><select id="s-category"><option>Alimentação</option><option>Lavanderia</option><option>SPA</option><option>Outros</option></select></div>
+        <div class="form-group"><label>Preço (R$) *</label><input type="number" id="s-price" min="0" step="0.01" placeholder="0.00"></div>
+        <div class="form-group" style="grid-column:1/-1"><label>Descrição</label><textarea id="s-desc"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('svc-modal')">Cancelar</button>
+      <button class="btn btn-primary" id="save-svc-btn">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/api.js"></script>
+<script>
+requireAuth(); initSidebar(); setupModalClose('svc-modal');
+const catIcons = { 'Alimentação':'🍽️', 'Lavanderia':'👕', 'SPA':'💆', 'Outros':'📦' };
+
+async function loadAll() {
+  const [services, reservations] = await Promise.all([
+    apiFetch('/services'),
+    apiFetch('/reservations?status=checked_in'),
+  ]);
+  // Fill reservation dropdown
+  const resSel = document.getElementById('svc-reservation');
+  const urlId = new URLSearchParams(location.search).get('id');
+  resSel.innerHTML = '<option value="">Selecione...</option>' + reservations.map(r => `<option value="${r.id}" ${String(r.id) === urlId ? 'selected' : ''}>${r.guest_name} — Quarto ${r.room_number}</option>`).join('');
+  if (urlId) loadLedger(urlId);
+
+  // Fill service dropdown
+  const svcSel = document.getElementById('svc-service');
+  svcSel.innerHTML = '<option value="">Selecione...</option>' + services.map(s => `<option value="${s.id}" data-price="${s.price}">${catIcons[s.category] || '📦'} ${s.name} — ${formatCurrency(s.price)}</option>`).join('');
+
+  // Catalog table
+  document.getElementById('catalog-table').innerHTML = services.map(s => `
+    <tr>
+      <td class="font-semibold">${catIcons[s.category] || '📦'} ${s.name}</td>
+      <td class="text-muted">${s.category}</td>
+      <td class="text-primary font-semibold">${formatCurrency(s.price)}</td>
+      <td><span class="badge ${s.active ? 'badge-confirmed' : 'badge-cancelled'}">${s.active ? 'Ativo' : 'Inativo'}</span></td>
+      <td><button class="btn btn-secondary btn-sm" onclick="toggleService(${s.id}, ${s.active})">${s.active ? 'Desativar' : 'Ativar'}</button></td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" class="empty-state">Sem serviços</td></tr>';
+}
+
+async function loadLedger(id) {
+  if (!id) { document.getElementById('svc-ledger').innerHTML = '<div class="empty-state"><div class="empty-icon">🛎️</div><p>Selecione uma reserva</p></div>'; return; }
+  const items = await apiFetch('/services/reservation/' + id);
+  const total = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+  const badge = document.getElementById('svc-total-badge');
+  badge.textContent = formatCurrency(total);
+  badge.style.display = items.length ? 'inline-flex' : 'none';
+  document.getElementById('svc-ledger').innerHTML = items.length
+    ? items.map(i => `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div class="font-semibold">${i.service_name}</div>
+          <div class="text-muted" style="font-size:12px">${i.quantity}x ${formatCurrency(i.unit_price)} · ${formatDateTime(i.charged_at)}</div>
+        </div>
+        <div class="flex gap-2 items-center">
+          <span class="font-semibold text-primary">${formatCurrency(i.quantity * i.unit_price)}</span>
+          <button class="btn btn-danger btn-icon btn-sm" onclick="removeCharge(${i.id})">✕</button>
+        </div>
+      </div>`).join('')
+    : '<div class="empty-state" style="padding:30px"><div>🛎️</div>Nenhum consumo lançado</div>';
+}
+
+function updateSvcPreview() {
+  const sel = document.getElementById('svc-service');
+  const opt = sel.options[sel.selectedIndex];
+  const qty = parseInt(document.getElementById('svc-qty').value) || 1;
+  const preview = document.getElementById('svc-preview');
+  if (opt && opt.dataset.price) {
+    const total = qty * parseFloat(opt.dataset.price);
+    preview.style.display = 'block';
+    preview.innerHTML = `<span class="font-semibold">${qty}x</span> ${opt.textContent.split(' — ')[0]} = <strong class="text-primary">${formatCurrency(total)}</strong>`;
+  } else { preview.style.display = 'none'; }
+}
+
+document.getElementById('svc-service').addEventListener('change', updateSvcPreview);
+document.getElementById('svc-qty').addEventListener('input', updateSvcPreview);
+document.getElementById('svc-reservation').addEventListener('change', e => loadLedger(e.target.value));
+
+document.getElementById('charge-btn').addEventListener('click', async () => {
+  const body = {
+    reservation_id: document.getElementById('svc-reservation').value,
+    service_id: document.getElementById('svc-service').value,
+    quantity: document.getElementById('svc-qty').value,
+    notes: document.getElementById('svc-notes').value,
+  };
+  if (!body.reservation_id || !body.service_id) { toast('Selecione reserva e serviço', 'error'); return; }
+  try {
+    await apiFetch('/services/charge', { method: 'POST', body });
+    toast('Serviço lançado!', 'success');
+    document.getElementById('svc-qty').value = 1;
+    document.getElementById('svc-notes').value = '';
+    document.getElementById('svc-preview').style.display = 'none';
+    loadLedger(body.reservation_id);
+  } catch (e) { toast(e.message, 'error'); }
+});
+
+async function removeCharge(id) {
+  if (!confirm('Remover este lançamento?')) return;
+  try {
+    await apiFetch('/services/charge/' + id, { method: 'DELETE' });
+    toast('Lançamento removido', 'success');
+    loadLedger(document.getElementById('svc-reservation').value);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function toggleService(id, active) {
+  await apiFetch('/services/catalog/' + id, { method: 'PUT', body: { active: active ? 0 : 1 } });
+  toast('Serviço atualizado', 'success'); loadAll();
+}
+
+document.getElementById('add-svc-btn').addEventListener('click', () => openModal('svc-modal'));
+document.getElementById('save-svc-btn').addEventListener('click', async () => {
+  const body = { name: document.getElementById('s-name').value, category: document.getElementById('s-category').value, price: document.getElementById('s-price').value, description: document.getElementById('s-desc').value };
+  if (!body.name || !body.price) { toast('Nome e preço são obrigatórios', 'error'); return; }
+  try { await apiFetch('/services/catalog', { method: 'POST', body }); toast('Serviço criado!', 'success'); closeModal('svc-modal'); loadAll(); }
+  catch (e) { toast(e.message, 'error'); }
+});
+
+loadAll();
+</script>
+</body>
+</html>

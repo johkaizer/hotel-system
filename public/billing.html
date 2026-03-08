@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Faturamento — Hotel Manager</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .bill-header { background: var(--bg3); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    .bill-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .bill-total { display: flex; justify-content: space-between; font-size: 18px; font-weight: 800; padding: 16px 0; border-top: 2px solid var(--border-active); margin-top: 8px; }
+  </style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">🏨</div><div class="logo-text">Hotel Manager<span>Sistema de Gestão</span></div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-label">Menu Principal</div>
+        <a class="nav-item" href="./dashboard.html"><span class="icon">📊</span><span>Dashboard</span></a>
+        <a class="nav-item" href="./rooms.html"><span class="icon">🛏️</span><span>Quartos</span></a>
+        <a class="nav-item" href="./guests.html"><span class="icon">👤</span><span>Hóspedes</span></a>
+        <a class="nav-item" href="./reservations.html"><span class="icon">📅</span><span>Reservas</span></a>
+        <a class="nav-item" href="./checkin.html"><span class="icon">🔑</span><span>Check-in / Check-out</span></a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Operações</div>
+        <a class="nav-item" href="./services.html"><span class="icon">🛎️</span><span>Serviços</span></a>
+        <a class="nav-item active" href="./billing.html"><span class="icon">💳</span><span>Faturamento</span></a>
+        <a class="nav-item" href="./reports.html"><span class="icon">📈</span><span>Relatórios</span></a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card"><div class="user-avatar"><span class="user-initial">A</span></div><div class="user-info"><div class="name user-name">Admin</div><div class="role user-role">Administrador</div></div></div>
+      <button class="btn btn-secondary btn-sm w-full mt-4" id="logout-btn">🚪 Sair</button>
+    </div>
+  </aside>
+  <main class="main-content">
+    <div class="page-header">
+      <h1>💳 Faturamento</h1>
+      <div class="ml-auto flex gap-2">
+        <select class="filter-select" id="bill-res-select"><option value="">Selecione uma reserva...</option></select>
+      </div>
+    </div>
+    <div class="page-body">
+      <div id="bill-content">
+        <div class="empty-state"><div class="empty-icon">💳</div><p>Selecione uma reserva para ver a conta</p></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Pay Modal -->
+<div class="modal-overlay" id="pay-modal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Registrar Pagamento</span><button class="btn btn-secondary btn-icon" onclick="closeModal('pay-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group"><label>Valor (R$) *</label><input type="number" id="pay-amount" min="0" step="0.01" placeholder="0.00"></div>
+        <div class="form-group"><label>Método de Pagamento *</label>
+          <select id="pay-method">
+            <option value="Cartão de Crédito">Cartão de Crédito</option>
+            <option value="Cartão de Débito">Cartão de Débito</option>
+            <option value="Dinheiro">Dinheiro</option>
+            <option value="PIX">PIX</option>
+            <option value="Transferência">Transferência Bancária</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1"><label>Observações</label><input type="text" id="pay-notes" placeholder="Observações..."></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('pay-modal')">Cancelar</button>
+      <button class="btn btn-success" id="confirm-pay-btn">✅ Confirmar Pagamento</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/api.js"></script>
+<script>
+requireAuth(); initSidebar(); setupModalClose('pay-modal');
+let currentResvId = null;
+
+async function loadReservationList() {
+  const all = await apiFetch('/reservations');
+  const sel = document.getElementById('bill-res-select');
+  sel.innerHTML = '<option value="">Selecione uma reserva...</option>'
+    + all.map(r => `<option value="${r.id}">${r.guest_name} — Qto ${r.room_number} (${formatDate(r.check_in_date)}) — ${statusLabel(r.status)}</option>`).join('');
+  const urlId = new URLSearchParams(location.search).get('id');
+  if (urlId) { sel.value = urlId; loadBill(urlId); }
+}
+
+async function loadBill(id) {
+  if (!id) { document.getElementById('bill-content').innerHTML = '<div class="empty-state"><div class="empty-icon">💳</div><p>Selecione uma reserva</p></div>'; return; }
+  currentResvId = id;
+  const bill = await apiFetch('/billing/' + id);
+  const r = bill.reservation;
+  const canPay = ['confirmed','checked_in','checked_out'].includes(r.status);
+  document.getElementById('bill-content').innerHTML = `
+    <div class="grid-2">
+      <div>
+        <div class="card">
+          <div class="bill-header">
+            <div style="font-size:20px;font-weight:800;margin-bottom:4px">${r.guest_name}</div>
+            <div class="text-muted" style="font-size:13px">${r.cpf || ''} ${r.email || ''}</div>
+            <div style="margin-top:8px"><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></div>
+          </div>
+
+          <div class="bill-row"><span>🛏️ Quarto ${r.room_number} (${r.room_type})</span><span class="text-muted">${bill.nights} noite(s) × ${formatCurrency(r.price_per_night)}</span></div>
+          <div class="bill-row"><span class="text-muted">Hospedagem</span><span class="font-semibold">${formatCurrency(bill.room_total)}</span></div>
+
+          ${bill.services.length ? `
+          <div class="bill-row" style="margin-top:8px"><strong>Serviços Extras</strong></div>
+          ${bill.services.map(s => `<div class="bill-row"><span class="text-muted">${s.service_name} ×${s.quantity}</span><span>${formatCurrency(s.quantity * s.unit_price)}</span></div>`).join('')}
+          <div class="bill-row"><span class="text-muted">Subtotal Serviços</span><span class="font-semibold">${formatCurrency(bill.services_total)}</span></div>` : ''}
+
+          <div class="bill-total">
+            <span>TOTAL</span>
+            <span class="text-primary">${formatCurrency(bill.total)}</span>
+          </div>
+
+          <div class="bill-row"><span class="text-muted">Total Pago</span><span class="text-success font-semibold">${formatCurrency(bill.paid)}</span></div>
+          <div class="bill-row"><span class="font-bold">Saldo em Aberto</span><span class="font-bold ${bill.balance > 0 ? 'text-danger' : 'text-success'}">${formatCurrency(bill.balance)}</span></div>
+
+          ${canPay ? `<button class="btn btn-primary w-full mt-4" onclick="openPayModal(${bill.balance})">💳 Registrar Pagamento</button>` : ''}
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Histórico de Pagamentos</span></div>
+          ${bill.payments.length
+            ? bill.payments.map(p => `<div class="bill-row">
+                <div><div class="font-semibold">${p.method}</div><div class="text-muted" style="font-size:12px">${formatDateTime(p.paid_at)}</div></div>
+                <span class="text-success font-semibold">${formatCurrency(p.amount)}</span>
+              </div>`).join('')
+            : '<div class="empty-state" style="padding:30px"><div>💳</div>Nenhum pagamento registrado</div>'}
+
+          <div class="bill-row mt-4">
+            <span class="font-bold">Check-in</span><span>${formatDate(r.check_in_date)}</span>
+          </div>
+          <div class="bill-row">
+            <span class="font-bold">Check-out</span><span>${formatDate(r.check_out_date)}</span>
+          </div>
+          <div class="bill-row">
+            <span class="font-bold">Duração</span><span>${bill.nights} noite(s)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function openPayModal(balance) {
+  document.getElementById('pay-amount').value = Math.max(0, balance).toFixed(2);
+  openModal('pay-modal');
+}
+
+document.getElementById('confirm-pay-btn').addEventListener('click', async () => {
+  const body = { amount: document.getElementById('pay-amount').value, method: document.getElementById('pay-method').value, notes: document.getElementById('pay-notes').value };
+  if (!body.amount) { toast('Informe o valor', 'error'); return; }
+  try {
+    await apiFetch('/billing/' + currentResvId + '/pay', { method: 'POST', body });
+    toast('Pagamento registrado!', 'success');
+    closeModal('pay-modal'); loadBill(currentResvId);
+  } catch (e) { toast(e.message, 'error'); }
+});
+
+document.getElementById('bill-res-select').addEventListener('change', e => loadBill(e.target.value));
+loadReservationList();
+</script>
+</body>
+</html>
