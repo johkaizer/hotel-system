@@ -6,7 +6,7 @@ const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = path.join(__dirname, 'hotel.db.bin');
+const DB_PATH = process.env.VERCEL ? '/tmp/hotel.db.bin' : path.join(__dirname, 'hotel.db.bin');
 
 // ─── Sync-style DB wrapper ────────────────────────────────────────────────
 // We expose a synchronous interface identical to better-sqlite3 so routes
@@ -17,8 +17,12 @@ let _db = null;
 
 function saveDb() {
   if (!_db) return;
-  const data = _db.export();
-  fs.writeFileSync(DB_PATH, Buffer.from(data));
+  try {
+    const data = _db.export();
+    fs.writeFileSync(DB_PATH, Buffer.from(data));
+  } catch (err) {
+    console.warn('Aviso: Não foi possível salvar o banco no disco, rodando apenas em memória.', err.message);
+  }
 }
 
 function prepare(sql) {
@@ -176,8 +180,8 @@ async function initDb() {
     _db = new SQL.Database();
   }
   // Run schema (CREATE TABLE IF NOT EXISTS is idempotent)
-  _db.run(SCHEMA);
-  saveDb();
+  exec(SCHEMA);
+  // saveDb() is already called inside exec()
   return db;
 }
 
